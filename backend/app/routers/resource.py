@@ -68,6 +68,10 @@ def module_snapshot(module: str) -> dict[str, Any]:
     elif module == "analysis_request":
         pending_approval = sum(1 for r in store.rows("analysis_request") if r.get("status") == "已提交")
         cross["pending_approval_count"] = pending_approval
+        cross["pickup_queue_count"] = len(store.pickup_queue())
+        cross["stock_credential_count"] = len(
+            [r for r in store.rows("sample_registry") if r.get("入库凭据号")]
+        )
     elif module == "equipment_manifest":
         calib_rows = store.rows("instrument_calib")
         failed_calibs = sum(1 for r in calib_rows if r.get("status") == "不合格")
@@ -138,6 +142,24 @@ def cross_links() -> dict[str, Any]:
     for source, target_list in module_links.items():
         links.append({"source": source, "links": target_list})
     return {"links": links}
+
+
+@router.get("/analysis_request/pickup-queue")
+def approved_pickup_queue() -> dict[str, Any]:
+    """获批待领取队列：仅持有真实入库凭据、航次归属明确的样品申请。"""
+    service = require_service("analysis_request")
+    items = service.approved_pickup_queue()
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/analysis_request/{entry_id}/approval-receipt")
+def approval_receipt(entry_id: int) -> dict[str, Any]:
+    """审批人从申请详情重查库存资格回执：最近答复 + 历次答复历史 + 取样关联。"""
+    service = require_service("analysis_request")
+    receipt = service.get_approval_receipt(entry_id)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail=f"分析申请单 {entry_id} 不存在或已归档")
+    return receipt
 
 
 @router.get("/{module}", response_model=PageResult[dict])

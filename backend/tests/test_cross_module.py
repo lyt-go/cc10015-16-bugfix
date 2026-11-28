@@ -624,18 +624,25 @@ def test_full_cross_module_chain():
     assert registry is not None, "样品登记应有对应记录"
     assert registry.get("synced_from") == "sampling_record"
 
-    # 6. 将样品登记入库
+    # 6. 将样品登记入库（须登记航次归属，签发真实入库凭据）
     from app.services.sample_registry import SampleRegistryService
     reg_svc = SampleRegistryService()
     if registry:
         registry["status"] = "已登记"
+        registry["航次编号"] = "CRUI-LINK"
         entry, msg = reg_svc.run_action(registry["id"], "执行入库")
         assert entry is not None and entry["status"] == "已入库"
+        assert entry.get("入库凭据号"), "入库后应签收入库凭据"
 
     # 7. 批准分析申请
     from app.services.analysis_request import AnalysisRequestService
     analysis_svc = AnalysisRequestService()
     _samples("analysis_request")[0]["申请样品"] = "SAMP-LINK-001"
+    _samples("analysis_request")[0]["航次编号"] = "CRUI-LINK"
     _samples("analysis_request")[0]["status"] = "已提交"
     entry, msg = analysis_svc.run_action(1, "批准分析")
-    assert entry is not None, "样品已入库，应批准成功"
+    assert entry is not None, f"样品已入库，应批准成功：{msg}"
+    assert entry["取样关联"]["credential_no"] == registry["入库凭据号"]
+    # 获批且凭据真实的申请进入待领取队列
+    queue = analysis_svc.approved_pickup_queue()
+    assert any(item["request_id"] == 1 for item in queue)

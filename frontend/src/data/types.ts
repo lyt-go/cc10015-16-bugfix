@@ -36,3 +36,13 @@ export type OverviewResult = {
   cards: { label: string; value: number }[]
   modules: { name: string; created: number; pending: number; abnormal: number }[]
 }
+
+export type ApprovalReceipt = {
+  request_id: number
+  status: string
+  sample_no: string
+  cruise_no: string
+  latest: Record<string, any> | null
+  history: Record<string, any>[]
+  pickup_link: Record<string, any> | null
+}

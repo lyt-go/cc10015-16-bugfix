@@ -1,6 +1,6 @@
 import { request } from './client'
 import { moduleMeta } from '@/data/modules'
-import type { ActionResult, EntryRow, OverviewResult, PageResult } from '@/data/types'
+import type { ActionResult, ApprovalReceipt, EntryRow, OverviewResult, PageResult } from '@/data/types'
 
 export { moduleMeta }
 
@@ -63,5 +63,11 @@ export async function loadOverview(): Promise<OverviewResult> {
 export async function fetchSnapshot(key: string): Promise<Record<string, any>> {
   const response = await request(`/api/snapshot/${key}`)
   if (!response.ok) throw new Error('跨模块快照读取失败')
+  return await response.json()
+}
+
+export async function fetchApprovalReceipt(requestId: number): Promise<ApprovalReceipt> {
+  const response = await request(`/api/analysis_request/${requestId}/approval-receipt`)
+  if (!response.ok) throw new Error('库存资格回执读取失败')
   return await response.json()
 }

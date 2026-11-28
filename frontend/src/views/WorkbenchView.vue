@@ -48,10 +48,23 @@
       <tbody>
         <tr v-for="row in rows" :key="String(row.id)" :data-testid="`row-${row.id}`" :data-status="String(row.status)">
           <td v-for="column in meta.fields" :key="column">{{ row[column] ?? '—' }}</td>
-          <td>{{ row.status }}</td>
+          <td>
+            <div>{{ row.status }}</div>
+            <div v-if="row['入库凭据号']" class="sub-text" data-testid="credential-no">
+              入库凭据：{{ row['入库凭据号'] }}
+            </div>
+            <div v-if="row['库存资格回执号']" class="sub-text" data-testid="receipt-no">
+              库存资格回执：{{ row['库存资格回执号'] }}
+            </div>
+            <div v-if="row['补办提示']" class="remedy-text" data-testid="remedy-hint">
+              {{ row['补办提示'] }}
+            </div>
+          </td>
           <td class="row-actions">
             <button v-for="action in meta.actions" :key="action" class="link" type="button"
               :data-testid="`action-${row.id}-${action}`" @click="runAction(action, row)">{{ action }}</button>
+            <button v-if="meta.key === 'analysis_request'" class="link" type="button"
+              data-testid="recheck-receipt" @click="openReceipt(row)">重查回执</button>
           </td>
         </tr>
         <tr v-if="!rows.length">
@@ -76,6 +89,35 @@
       </form>
     </div>
 
+    <div v-if="receiptVisible" class="modal-backdrop" data-testid="receipt-modal">
+      <div class="modal">
+        <h3>库存资格回执 · 申请单 {{ receipt?.request_id }}</h3>
+        <p v-if="!receipt || !receipt.latest" class="sub-text">该申请尚未发起过批准，暂无审批答复。</p>
+        <template v-else>
+          <p>
+            样品 {{ receipt.sample_no }}（{{ receipt.cruise_no }}）最近一次答复：
+            <strong :class="receipt.latest.qualified ? 'ok-text' : 'remedy-text'">
+              {{ receipt.latest.qualified ? '已取得可用于取样的库存资格' : '未取得库存资格' }}
+            </strong>
+          </p>
+          <p class="sub-text">{{ receipt.latest.message }}</p>
+          <p v-if="receipt.latest.remedy_hint" class="remedy-text">补办指引：{{ receipt.latest.remedy_hint }}</p>
+          <p v-if="receipt.pickup_link" class="sub-text">
+            取样关联：凭据 {{ receipt.pickup_link.credential_no }} · 登记记录 #{{ receipt.pickup_link.registry_id }}
+          </p>
+          <h4>历次答复</h4>
+          <ul class="receipt-history">
+            <li v-for="item in receipt.history" :key="item.id">
+              {{ item.replied_at }} — {{ item.qualified ? '通过' : '未通过' }}（{{ item.reason_code }}）
+            </li>
+          </ul>
+        </template>
+        <div class="page-actions">
+          <button class="btn primary" type="button" @click="receiptVisible = false">关闭</button>
+        </div>
+      </div>
+    </div>
+
     <footer class="page-foot">
       <span>共 {{ total }} 条{{ meta.name }}记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
@@ -85,8 +127,15 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { createEntry, downloadEntries, listEntries, moduleMeta, runAction as applyAction } from '@/api/backend-service'
-import type { EntryRow } from '@/data/types'
+import {
+  createEntry,
+  downloadEntries,
+  fetchApprovalReceipt,
+  listEntries,
+  moduleMeta,
+  runAction as applyAction,
+} from '@/api/backend-service'
+import type { ApprovalReceipt, EntryRow } from '@/data/types'
 
 const props = defineProps<{ moduleKey: string }>()
 const meta = moduleMeta(props.moduleKey)
@@ -98,6 +147,8 @@ const filterFields = meta.fields.slice(0, 3)
 const showCreate = ref(false)
 const creating = ref(false)
 const createValues = ref<Record<string, string>>({})
+const receiptVisible = ref(false)
+const receipt = ref<ApprovalReceipt | null>(null)
 
 const stats = computed(() => [
   { label: meta.metrics[0], value: total.value },
@@ -141,6 +192,15 @@ async function runAction(action: string, row: EntryRow) {
   } catch (e) { errorMessage.value = e instanceof Error ? e.message : '操作失败' }
 }
 
+async function openReceipt(row: EntryRow) {
+  errorMessage.value = ''
+  receipt.value = null
+  receiptVisible.value = true
+  try {
+    receipt.value = await fetchApprovalReceipt(Number(row.id))
+  } catch (e) { errorMessage.value = e instanceof Error ? e.message : '回执读取失败' }
+}
+
 async function reload() {
   errorMessage.value = ''
   try {
@@ -158,4 +218,8 @@ onMounted(reload)
 .create-field { display:flex; flex-direction:column; gap:4px; margin-bottom:12px; }
 .create-field span { font-size:13px; color:var(--text-secondary,#4a5568); }
 .create-field input { padding:6px 8px; border:1px solid var(--border-color,#e2e8f0); border-radius:4px; font-size:13px; }
+.sub-text { font-size:12px; color:var(--text-secondary,#4a5568); margin-top:2px; }
+.remedy-text { font-size:12px; color:#c05621; margin-top:2px; }
+.ok-text { color:#2f855a; }
+.receipt-history { padding-left:18px; font-size:13px; line-height:1.8; }
 </style>
